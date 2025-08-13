@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AUDIO_URLS } from './constants';
 import { FlashcardItem } from './types';
@@ -11,6 +10,8 @@ const App: React.FC = () => {
   const [importUrl, setImportUrl] = useState('');
   const [isImportingUrl, setIsImportingUrl] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isTextHidden, setIsTextHidden] = useState(false);
+  const [zoomedCardId, setZoomedCardId] = useState<string | null>(null);
 
   useEffect(() => {
     const parsedFlashcards = AUDIO_URLS.map(url => {
@@ -83,6 +84,23 @@ const App: React.FC = () => {
     fileInputRef.current?.click();
   };
 
+  const processAndSetImportedData = (data: any[]) => {
+    if (!Array.isArray(data) || data.some(item => typeof item.id === 'undefined' || typeof item.text === 'undefined')) {
+      throw new Error("Invalid JSON structure. Expected an array of flashcard items.");
+    }
+
+    const validatedData = data.map(item => ({
+      id: item.id,
+      text: item.text,
+      audioUrl: item.audioUrl,
+      imageUrl: item.imageUrl || null,
+      isLoading: false, // Always reset loading state on import
+    }));
+    
+    setFlashcards(validatedData);
+    setError(null);
+  };
+
   const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -97,13 +115,7 @@ const App: React.FC = () => {
           throw new Error("File could not be read properly.");
         }
         const importedData = JSON.parse(text);
-
-        if (!Array.isArray(importedData) || importedData.some(item => typeof item.id === 'undefined' || typeof item.text === 'undefined')) {
-          throw new Error("Invalid JSON structure. Expected an array of flashcard items.");
-        }
-
-        setFlashcards(importedData);
-        setError(null);
+        processAndSetImportedData(importedData);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
         setError(`Failed to import file. Please ensure it's a valid JSON. Error: ${errorMessage}`);
@@ -130,12 +142,7 @@ const App: React.FC = () => {
         throw new Error(`Failed to fetch from URL: ${response.statusText}`);
       }
       const importedData = await response.json();
-
-      if (!Array.isArray(importedData) || importedData.some(item => typeof item.id === 'undefined' || typeof item.text === 'undefined')) {
-        throw new Error("Invalid JSON structure from URL. Expected an array of flashcard items.");
-      }
-
-      setFlashcards(importedData);
+      processAndSetImportedData(importedData);
       setImportUrl('');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
@@ -145,6 +152,15 @@ const App: React.FC = () => {
     }
   };
 
+  const handleCardClick = (id: string) => {
+    setZoomedCardId(id);
+  };
+
+  const handleCloseZoom = () => {
+      setZoomedCardId(null);
+  };
+
+  const zoomedCard = zoomedCardId ? flashcards.find(c => c.id === zoomedCardId) : null;
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
@@ -154,7 +170,7 @@ const App: React.FC = () => {
             Audio Flashcard Image Generator
           </h1>
           <p className="mt-2 text-lg text-gray-400">
-            Generate images, export your deck, or import one from a file or URL.
+            Generate images, practice your pronunciation, and manage your flashcard decks.
           </p>
           <div className="mt-6 flex justify-center items-center gap-4 flex-wrap">
              <button
@@ -202,6 +218,33 @@ const App: React.FC = () => {
                 {isImportingUrl ? 'Importing...' : 'Import from URL'}
             </button>
           </div>
+          <div className="mt-6 flex items-center justify-center gap-3">
+              <label htmlFor="hide-text-toggle" className="font-semibold text-gray-300 select-none cursor-pointer">
+                  Hide Text Mode
+              </label>
+              <div className="relative inline-block w-10 align-middle select-none transition duration-200 ease-in">
+                  <input
+                      type="checkbox"
+                      id="hide-text-toggle"
+                      checked={isTextHidden}
+                      onChange={() => setIsTextHidden(!isTextHidden)}
+                      className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-gray-400 checked:right-0 checked:border-purple-600"
+                  />
+                  <label
+                      htmlFor="hide-text-toggle"
+                      className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-600 cursor-pointer"
+                  ></label>
+              </div>
+              <style>{`
+                .toggle-checkbox:checked {
+                  right: 0;
+                  border-color: #9333ea; /* purple-600 */
+                }
+                .toggle-checkbox:checked + .toggle-label {
+                  background-color: #9333ea; /* purple-600 */
+                }
+              `}</style>
+          </div>
         </header>
 
         {error && (
@@ -218,11 +261,39 @@ const App: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
             {flashcards.map(card => (
-              <Card key={card.id} item={card} onGenerateImage={handleGenerateImage} />
+              <Card 
+                key={card.id} 
+                item={card} 
+                onGenerateImage={handleGenerateImage}
+                isTextHidden={isTextHidden}
+                onCardClick={handleCardClick}
+              />
             ))}
           </div>
         )}
       </div>
+
+       {zoomedCard && (
+          <div
+              className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 transition-opacity duration-300"
+              onClick={handleCloseZoom}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={`card-title-${zoomedCard.id}`}
+          >
+              <div
+                  onClick={e => e.stopPropagation()}
+                  className="w-full max-w-lg"
+              >
+                  <Card
+                      item={zoomedCard}
+                      onGenerateImage={handleGenerateImage}
+                      isZoomed={true}
+                      onCloseZoom={handleCloseZoom}
+                  />
+              </div>
+          </div>
+       )}
     </div>
   );
 };
