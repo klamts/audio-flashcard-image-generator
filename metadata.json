@@ -1,0 +1,5 @@
+{
+  "name": "Audio Flashcard Image Generator",
+  "description": "An application that generates images for audio flashcards based on their titles using the Gemini API.",
+  "requestFramePermissions": []
+}
